@@ -1,4 +1,5 @@
 require('dotenv').config();
+const https = require('https');
 const { Telegraf, Markup } = require('telegraf');
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
@@ -286,6 +287,25 @@ async function callLLMGateway(message, model = 'ollama/llama3.1:8b') {
     console.error('LLM Gateway error:', error.message);
     throw error;
   }
+}
+
+function setWebhookManual() {
+  return new Promise((resolve, reject) => {
+    if (!WEBHOOK_URL) return resolve(false);
+    const url = `https://api.telegram.org/bot${BOT_TOKEN}/setWebhook?url=${encodeURIComponent(`${WEBHOOK_URL}/webhook`)}`;
+    const req = https.get(url, (res) => {
+      res.resume();
+      if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+        resolve(true);
+      } else {
+        reject(new Error(`setWebhook status ${res.statusCode}`));
+      }
+    });
+    req.on('error', reject);
+    req.setTimeout(10000, () => {
+      req.destroy(new Error('setWebhook timeout'));
+    });
+  });
 }
 
 async function callNovaAPI(prompt, confirmed = false) {
@@ -950,7 +970,7 @@ const startBot = async () => {
     const startTelegram = async () => {
       try {
         if (WEBHOOK_URL) {
-          await bot.telegram.setWebhook(`${WEBHOOK_URL}/webhook`);
+          await setWebhookManual();
           startServer();
         } else {
           startServer();
