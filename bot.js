@@ -8,7 +8,7 @@ const { createClient } = require('@supabase/supabase-js');
 // CONFIGURATION
 // ===========================================
 
-const BOT_TOKEN = process.env.BOT_TOKEN;
+const BOT_TOKEN = (process.env.BOT_TOKEN || '').trim();
 if (!BOT_TOKEN) {
   console.error('❌ Missing BOT_TOKEN environment variable. Set BOT_TOKEN and restart the service.');
   process.exit(1);
