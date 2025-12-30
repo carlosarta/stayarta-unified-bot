@@ -934,30 +934,37 @@ const startBot = async () => {
       console.warn('⚠️ Supabase not configured (optional)');
     }
 
-    if (WEBHOOK_URL) {
-      // Webhook mode (production)
+    let serverStarted = false;
+
+    const startServer = () => {
+      if (serverStarted) return;
+      app.listen(PORT, '0.0.0.0', () => {
+        console.log(`✅ ${BRAND.name} running on port ${PORT}`);
+        console.log(`🔗 Health: ${WEBHOOK_URL ? WEBHOOK_URL : `http://localhost:${PORT}`}/health`);
+        console.log(`🔗 Stats: ${WEBHOOK_URL ? WEBHOOK_URL : `http://localhost:${PORT}`}/stats`);
+        if (WEBHOOK_URL) console.log(`🔗 Webhook: ${WEBHOOK_URL}/webhook`);
+      });
+      serverStarted = true;
+    };
+
+    const startTelegram = async () => {
       try {
-        await bot.telegram.setWebhook(`${WEBHOOK_URL}/webhook`);
-        app.listen(PORT, '0.0.0.0', () => {
-          console.log(`✅ ${BRAND.name} running on port ${PORT}`);
-          console.log(`🔗 Webhook: ${WEBHOOK_URL}/webhook`);
-          console.log(`🔗 Health: ${WEBHOOK_URL}/health`);
-          console.log(`🔗 Stats: ${WEBHOOK_URL}/stats`);
-        });
-      } catch (error) {
-        console.error('❌ setWebhook failed, falling back to polling:', error.message);
+        if (WEBHOOK_URL) {
+          await bot.telegram.setWebhook(`${WEBHOOK_URL}/webhook`);
+          startServer();
+        } else {
+          startServer();
+        }
         await bot.launch();
-        console.log(`✅ ${BRAND.name} running in polling mode`);
-        console.log(`🔗 Health: http://localhost:${PORT}/health`);
-        console.log(`🔗 Stats: http://localhost:${PORT}/stats`);
+        console.log(`✅ ${BRAND.name} running in ${WEBHOOK_URL ? 'webhook' : 'polling'} mode`);
+      } catch (error) {
+        console.error('❌ Telegram init failed, retrying in 30s:', error.message);
+        startServer();
+        setTimeout(startTelegram, 30000);
       }
-    } else {
-      // Polling mode (development)
-      await bot.launch();
-      console.log(`✅ ${BRAND.name} running in polling mode`);
-      console.log(`🔗 Health: http://localhost:${PORT}/health`);
-      console.log(`🔗 Stats: http://localhost:${PORT}/stats`);
-    }
+    };
+
+    await startTelegram();
 
     console.log(`\n🎯 ${BRAND.tagline}`);
     console.log(`🏢 ${BRAND.company}\n`);
