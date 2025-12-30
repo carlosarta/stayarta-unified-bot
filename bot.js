@@ -936,13 +936,21 @@ const startBot = async () => {
 
     if (WEBHOOK_URL) {
       // Webhook mode (production)
-      await bot.telegram.setWebhook(`${WEBHOOK_URL}/webhook`);
-      app.listen(PORT, '0.0.0.0', () => {
-        console.log(`✅ ${BRAND.name} running on port ${PORT}`);
-        console.log(`🔗 Webhook: ${WEBHOOK_URL}/webhook`);
-        console.log(`🔗 Health: ${WEBHOOK_URL}/health`);
-        console.log(`🔗 Stats: ${WEBHOOK_URL}/stats`);
-      });
+      try {
+        await bot.telegram.setWebhook(`${WEBHOOK_URL}/webhook`);
+        app.listen(PORT, '0.0.0.0', () => {
+          console.log(`✅ ${BRAND.name} running on port ${PORT}`);
+          console.log(`🔗 Webhook: ${WEBHOOK_URL}/webhook`);
+          console.log(`🔗 Health: ${WEBHOOK_URL}/health`);
+          console.log(`🔗 Stats: ${WEBHOOK_URL}/stats`);
+        });
+      } catch (error) {
+        console.error('❌ setWebhook failed, falling back to polling:', error.message);
+        await bot.launch();
+        console.log(`✅ ${BRAND.name} running in polling mode`);
+        console.log(`🔗 Health: http://localhost:${PORT}/health`);
+        console.log(`🔗 Stats: http://localhost:${PORT}/stats`);
+      }
     } else {
       // Polling mode (development)
       await bot.launch();
