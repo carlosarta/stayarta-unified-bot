@@ -263,26 +263,26 @@ async function callCommandGateway(endpoint, data = {}) {
 
 async function callLLMGateway(message, model = 'ollama/llama3.1:8b') {
   try {
-    const response = await fetch(`${LLM_GATEWAY_URL}/api/chat`, {
+    const response = await fetch(`${LLM_GATEWAY_URL}/api/v1/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(LLM_GATEWAY_API_KEY ? { 'X-API-Key': LLM_GATEWAY_API_KEY } : {})
       },
       body: JSON.stringify({
-        provider: model.split('/')[0],
-        model: model.split('/')[1] || model,
-        messages: [{ role: 'user', content: message }],
-        stream: false
+        prompt: message,
+        provider: NOVA_DEFAULT_PROVIDER || model.split('/')[0],
+        confirmed: false
       })
     });
 
     if (!response.ok) {
-      throw new Error(`LLM Gateway returned ${response.status}`);
+      const errBody = await response.text();
+      throw new Error(`LLM Gateway returned ${response.status}: ${errBody}`);
     }
 
     const data = await response.json();
-    return data.choices?.[0]?.message?.content || data.response || 'No response';
+    return data?.data?.response || data?.response || 'No response';
   } catch (error) {
     console.error('LLM Gateway error:', error.message);
     throw error;
@@ -353,7 +353,7 @@ bot.start(async (ctx) => {
 });
 
 // /help - Help system
-bot.command('help', async (ctx) => {
+const handleHelp = async (ctx) => {
   await logMessage(ctx);
 
   const help = `📚 *${BRAND.name} - Help*\n\n` +
@@ -397,10 +397,12 @@ bot.command('help', async (ctx) => {
     `Use buttons below for quick access!`;
 
   await ctx.reply(help, { parse_mode: 'Markdown', ...mainMenu });
-});
+};
+
+bot.command('help', handleHelp);
 
 // /status - Bot status
-bot.command('status', async (ctx) => {
+const handleStatus = async (ctx) => {
   await logMessage(ctx);
 
   const uptime = Math.floor(process.uptime());
@@ -421,7 +423,9 @@ bot.command('status', async (ctx) => {
     `🚀 Ready for automation!`;
 
   await ctx.reply(status, { parse_mode: 'Markdown', ...mainMenu });
-});
+};
+
+bot.command('status', handleStatus);
 
 // /menu - Show main menu
 bot.command('menu', async (ctx) => {
@@ -430,7 +434,7 @@ bot.command('menu', async (ctx) => {
 });
 
 // /tasks - TaskBoard status
-bot.command('tasks', async (ctx) => {
+const handleTasks = async (ctx) => {
   await logMessage(ctx);
 
   try {
@@ -455,10 +459,12 @@ bot.command('tasks', async (ctx) => {
   } catch (error) {
     await ctx.reply(`❌ Error fetching tasks: ${error.message}`, mainMenu);
   }
-});
+};
+
+bot.command('tasks', handleTasks);
 
 // /orders - Order tracking
-bot.command('orders', async (ctx) => {
+const handleOrders = async (ctx) => {
   await logMessage(ctx);
 
   try {
@@ -478,10 +484,12 @@ bot.command('orders', async (ctx) => {
   } catch (error) {
     await ctx.reply(`❌ Error fetching orders: ${error.message}`, mainMenu);
   }
-});
+};
+
+bot.command('orders', handleOrders);
 
 // /deploy - Deployment info
-bot.command('deploy', async (ctx) => {
+const handleDeploy = async (ctx) => {
   await logMessage(ctx);
 
   try {
@@ -497,10 +505,12 @@ bot.command('deploy', async (ctx) => {
   } catch (error) {
     await ctx.reply(`❌ Error: ${error.message}`, mainMenu);
   }
-});
+};
+
+bot.command('deploy', handleDeploy);
 
 // /nova - Chat with Nova AI
-bot.command('nova', async (ctx) => {
+const handleNova = async (ctx) => {
   await logMessage(ctx);
 
   const args = ctx.message.text.split(' ').slice(1).join(' ');
@@ -535,7 +545,9 @@ bot.command('nova', async (ctx) => {
   } catch (error) {
     await ctx.reply(`❌ Nova error: ${error.message}`, mainMenu);
   }
-});
+};
+
+bot.command('nova', handleNova);
 
 // /confirm - Confirm sensitive action
 bot.command('confirm', async (ctx) => {
@@ -677,16 +689,18 @@ bot.command('servicios', async (ctx) => {
 });
 
 // /precios - Pricing info
-bot.command('precios', async (ctx) => {
+const handlePrecios = async (ctx) => {
   await logMessage(ctx);
   const message = `💰 *Precios STAYArta*\n\n` +
     `Consulta planes y opciones actualizadas en:\n` +
     `https://stayarta.com`;
   await ctx.reply(message, { parse_mode: 'Markdown', ...mainMenu });
-});
+};
+
+bot.command('precios', handlePrecios);
 
 // /contacto - Contact info
-bot.command('contacto', async (ctx) => {
+const handleContacto = async (ctx) => {
   await logMessage(ctx);
   const email = process.env.STAYARTA_CONTACT_EMAIL || 'hola@stayarta.com';
   const phone = process.env.STAYARTA_CONTACT_PHONE || '+34 662 652 300';
@@ -695,7 +709,9 @@ bot.command('contacto', async (ctx) => {
     `Tel: ${phone}\n` +
     `Web: https://stayarta.com`;
   await ctx.reply(message, { parse_mode: 'Markdown', ...mainMenu });
-});
+};
+
+bot.command('contacto', handleContacto);
 
 // /registrar - Link email to telegram user
 bot.command('registrar', async (ctx) => {
@@ -727,7 +743,7 @@ bot.command('registrar', async (ctx) => {
 });
 
 // /stats - Statistics
-bot.command('stats', async (ctx) => {
+const handleStats = async (ctx) => {
   await logMessage(ctx);
 
   const uptime = Math.floor(process.uptime());
@@ -758,7 +774,9 @@ bot.command('stats', async (ctx) => {
   stats += `\n🏢 ${BRAND.company}`;
 
   await ctx.reply(stats, { parse_mode: 'Markdown', ...mainMenu });
-});
+};
+
+bot.command('stats', handleStats);
 
 // /ping - Ping services
 bot.command('ping', async (ctx) => {
@@ -825,7 +843,7 @@ bot.command('tools', (ctx) => handleResourceCommand(ctx, 'tools'));
 bot.command('terminal', (ctx) => handleResourceCommand(ctx, 'terminal'));
 
 // /automation - Automation Hub
-bot.command('automation', async (ctx) => {
+const handleAutomation = async (ctx) => {
   await logMessage(ctx);
 
   try {
@@ -837,10 +855,12 @@ bot.command('automation', async (ctx) => {
   } catch (error) {
     await ctx.reply(`❌ Automation Hub: ${error.message}`, mainMenu);
   }
-});
+};
+
+bot.command('automation', handleAutomation);
 
 // /content - Content creation menu
-bot.command('content', async (ctx) => {
+const handleContent = async (ctx) => {
   await logMessage(ctx);
 
   const message = `📸 *Content Creation*\n\n` +
@@ -848,26 +868,28 @@ bot.command('content', async (ctx) => {
     `Use the menu below:`;
 
   await ctx.reply(message, { parse_mode: 'Markdown', ...contentMenu });
-});
+};
+
+bot.command('content', handleContent);
 
 // Button handlers
-bot.hears('📋 Tasks', (ctx) => ctx.telegram.sendMessage(ctx.chat.id, '/tasks'));
-bot.hears('📦 Orders', (ctx) => ctx.telegram.sendMessage(ctx.chat.id, '/orders'));
-bot.hears('🚀 Deploy', (ctx) => ctx.telegram.sendMessage(ctx.chat.id, '/deploy'));
-bot.hears('🤖 Nova AI', (ctx) => ctx.telegram.sendMessage(ctx.chat.id, '/nova'));
-bot.hears('🔑 License', (ctx) => ctx.telegram.sendMessage(ctx.chat.id, '/license'));
-bot.hears('📊 Stats', (ctx) => ctx.telegram.sendMessage(ctx.chat.id, '/stats'));
-bot.hears('⚙️ Automation', (ctx) => ctx.telegram.sendMessage(ctx.chat.id, '/automation'));
-bot.hears('❓ Help', (ctx) => ctx.telegram.sendMessage(ctx.chat.id, '/help'));
-bot.hears('⚡ Status', (ctx) => ctx.telegram.sendMessage(ctx.chat.id, '/status'));
-bot.hears('📸 Content', (ctx) => ctx.telegram.sendMessage(ctx.chat.id, '/content'));
-bot.hears('🏢 Command Center', (ctx) => ctx.telegram.sendMessage(ctx.chat.id, '/commandcenter'));
-bot.hears('📱 Dashboard', (ctx) => ctx.telegram.sendMessage(ctx.chat.id, '/dashboard'));
-bot.hears('🧩 MiniApps', (ctx) => ctx.telegram.sendMessage(ctx.chat.id, '/miniapps'));
-bot.hears('🛠️ Tools', (ctx) => ctx.telegram.sendMessage(ctx.chat.id, '/tools'));
-bot.hears('💻 Terminal', (ctx) => ctx.telegram.sendMessage(ctx.chat.id, '/terminal'));
-bot.hears('📞 Contacto', (ctx) => ctx.telegram.sendMessage(ctx.chat.id, '/contacto'));
-bot.hears('💰 Precios', (ctx) => ctx.telegram.sendMessage(ctx.chat.id, '/precios'));
+bot.hears('📋 Tasks', handleTasks);
+bot.hears('📦 Orders', handleOrders);
+bot.hears('🚀 Deploy', handleDeploy);
+bot.hears('🤖 Nova AI', handleNova);
+bot.hears('🔑 License', handleLicense);
+bot.hears('📊 Stats', handleStats);
+bot.hears('⚙️ Automation', handleAutomation);
+bot.hears('❓ Help', handleHelp);
+bot.hears('⚡ Status', handleStatus);
+bot.hears('📸 Content', handleContent);
+bot.hears('🏢 Command Center', (ctx) => handleResourceCommand(ctx, 'commandcenter'));
+bot.hears('📱 Dashboard', (ctx) => handleResourceCommand(ctx, 'dashboard'));
+bot.hears('🧩 MiniApps', (ctx) => handleResourceCommand(ctx, 'miniapps'));
+bot.hears('🛠️ Tools', (ctx) => handleResourceCommand(ctx, 'tools'));
+bot.hears('💻 Terminal', (ctx) => handleResourceCommand(ctx, 'terminal'));
+bot.hears('📞 Contacto', (ctx) => handleContacto(ctx));
+bot.hears('💰 Precios', (ctx) => handlePrecios(ctx));
 
 bot.hears('🔙 Back', async (ctx) => {
   await ctx.reply('📱 Main Menu:', mainMenu);
@@ -888,13 +910,44 @@ bot.hears('✅ Enviar', (ctx) => ctx.reply('✅ Envío no configurado aún.', co
 
 // General text handler (NOVA/LLM)
 bot.on('text', async (ctx) => {
-  if (ctx.message.text.startsWith('/')) return;
+  const text = (ctx.message?.text || '').trim();
+  if (!text) return;
+
+  // Normalize slash-prefixed button texts (e.g. "/📋 Tasks")
+  if (text.startsWith('/')) {
+    const normalized = text.replace(/^\//, '').trim();
+    const routes = {
+      '📋 Tasks': handleTasks,
+      '📦 Orders': handleOrders,
+      '🚀 Deploy': handleDeploy,
+      '🤖 Nova AI': handleNova,
+      '🔑 License': handleLicense,
+      '📊 Stats': handleStats,
+      '⚙️ Automation': handleAutomation,
+      '❓ Help': handleHelp,
+      '⚡ Status': handleStatus,
+      '📸 Content': handleContent,
+      '🏢 Command Center': (c) => handleResourceCommand(c, 'commandcenter'),
+      '📱 Dashboard': (c) => handleResourceCommand(c, 'dashboard'),
+      '🧩 MiniApps': (c) => handleResourceCommand(c, 'miniapps'),
+      '🛠️ Tools': (c) => handleResourceCommand(c, 'tools'),
+      '💻 Terminal': (c) => handleResourceCommand(c, 'terminal'),
+      '📞 Contacto': handleContacto,
+      '💰 Precios': handlePrecios,
+    };
+
+    if (routes[normalized]) {
+      await routes[normalized](ctx);
+    }
+    return;
+  }
+
   await logMessage(ctx);
   try {
     if (NOVA_API_URL) {
-      const result = await callNovaAPI(ctx.message.text, false);
+      const result = await callNovaAPI(text, false);
       if (result?.meta?.requiresConfirmation) {
-        pendingConfirmations.set(ctx.chat.id, { prompt: ctx.message.text });
+        pendingConfirmations.set(ctx.chat.id, { prompt: text });
         return ctx.reply(
           `Necesito confirmación antes de ejecutar: ${result.meta.reasons?.join(', ') || 'acción sensible'}.\nResponde /confirm o /cancel.`,
           mainMenu
@@ -902,7 +955,7 @@ bot.on('text', async (ctx) => {
       }
       return ctx.reply(result.response || 'Listo.', mainMenu);
     }
-    const response = await callLLMGateway(ctx.message.text);
+    const response = await callLLMGateway(text);
     return ctx.reply(response || 'Listo.', mainMenu);
   } catch (error) {
     console.error('❌ Nova/LLM error:', error);
@@ -968,15 +1021,22 @@ const startBot = async () => {
     };
 
     const startTelegram = async () => {
-      try {
-        if (WEBHOOK_URL) {
+      if (WEBHOOK_URL) {
+        try {
           await setWebhookManual();
-          startServer();
-        } else {
-          startServer();
+          console.log('✅ Webhook set');
+        } catch (error) {
+          console.warn('⚠️ Webhook setup failed (continuing anyway):', error.message);
         }
+        startServer();
+        console.log(`✅ ${BRAND.name} running in webhook mode`);
+        return;
+      }
+
+      try {
+        startServer();
         await bot.launch();
-        console.log(`✅ ${BRAND.name} running in ${WEBHOOK_URL ? 'webhook' : 'polling'} mode`);
+        console.log(`✅ ${BRAND.name} running in polling mode`);
       } catch (error) {
         console.error('❌ Telegram init failed, retrying in 30s:', error.message);
         startServer();
