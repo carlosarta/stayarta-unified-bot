@@ -29,6 +29,35 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KE
 const supabase = SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
 // ===========================================
+// NOVA ROLE & RESPONSE CONTROL
+// ===========================================
+
+const NOVA_ROLE = [
+  'Eres NOVA, socia de negocios y asistente operativa de STAYArta.',
+  'Responde con foco en ejecución, decisiones y próximos pasos.',
+  'No incluyas políticas, bienestar, ni advertencias genéricas.',
+  'No menciones reglas internas ni marcos de seguridad.',
+  'Sé breve y directa; usa listas cuando sea útil.'
+].join(' ');
+
+function buildNovaPrompt(userText) {
+  return `ROL: ${NOVA_ROLE}\n\nUSUARIO: ${userText}`;
+}
+
+function sanitizeNovaResponse(text) {
+  if (!text) return text;
+  const lines = text.split('\n');
+  const filtered = lines.filter((line) => {
+    const l = line.toLowerCase();
+    if (l.includes('política') || l.includes('policies') || l.includes('policy')) return false;
+    if (l.includes('bienestar') || l.includes('wellbeing') || l.includes('well-being')) return false;
+    if (l.includes('safety') || l.includes('seguridad') && l.includes('aviso')) return false;
+    return true;
+  });
+  return filtered.join('\n').trim();
+}
+
+// ===========================================
 // BRANDING
 // ===========================================
 
@@ -261,6 +290,17 @@ async function callCommandGateway(endpoint, data = {}) {
   }
 }
 
+function formatGatewayError(error) {
+  const msg = error?.message || 'Gateway error';
+  if (msg.includes('Gateway returned 500')) {
+    return 'Command Gateway offline (500).';
+  }
+  if (msg.includes('Gateway returned')) {
+    return `Command Gateway error: ${msg.replace('Gateway returned ', '')}`;
+  }
+  return `Command Gateway error: ${msg}`;
+}
+
 async function callLLMGateway(message, model = 'ollama/llama3.1:8b') {
   try {
     const response = await fetch(`${LLM_GATEWAY_URL}/api/v1/chat`, {
@@ -270,7 +310,7 @@ async function callLLMGateway(message, model = 'ollama/llama3.1:8b') {
         ...(LLM_GATEWAY_API_KEY ? { 'X-API-Key': LLM_GATEWAY_API_KEY } : {})
       },
       body: JSON.stringify({
-        prompt: message,
+        prompt: buildNovaPrompt(message),
         provider: NOVA_DEFAULT_PROVIDER || model.split('/')[0],
         confirmed: false
       })
@@ -282,7 +322,8 @@ async function callLLMGateway(message, model = 'ollama/llama3.1:8b') {
     }
 
     const data = await response.json();
-    return data?.data?.response || data?.response || 'No response';
+    const raw = data?.data?.response || data?.response || 'No response';
+    return sanitizeNovaResponse(raw);
   } catch (error) {
     console.error('LLM Gateway error:', error.message);
     throw error;
@@ -317,13 +358,17 @@ async function callNovaAPI(prompt, confirmed = false) {
   const response = await fetch(NOVA_API_URL, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ prompt, provider: NOVA_DEFAULT_PROVIDER, confirmed })
+    body: JSON.stringify({ prompt: buildNovaPrompt(prompt), provider: NOVA_DEFAULT_PROVIDER, confirmed })
   });
   if (!response.ok) {
     throw new Error(`Nova API error ${response.status}`);
   }
   const data = await response.json();
-  return data?.data || data;
+  const payload = data?.data || data;
+  if (payload?.response) {
+    payload.response = sanitizeNovaResponse(payload.response);
+  }
+  return payload;
 }
 
 const pendingConfirmations = new Map();
@@ -340,6 +385,9 @@ bot.start(async (ctx) => {
     `🏢 *${BRAND.company}*\n` +
     `⭐ ${BRAND.tagline}\n\n` +
     `✨ *Version ${BRAND.version}*\n\n` +
+    `🧭 *Rol de NOVA:*\n` +
+    `Socia de negocios y ejecutora operativa de STAYArta.\n` +
+    `Enfocada en resultados, decisiones y próximos pasos.\n\n` +
     `🎯 *Unified Features:*\n` +
     BRAND.features.join('\n') + '\n\n' +
     `📱 *Platform Info:*\n` +
@@ -357,6 +405,10 @@ const handleHelp = async (ctx) => {
   await logMessage(ctx);
 
   const help = `📚 *${BRAND.name} - Help*\n\n` +
+    `*Rol de NOVA:*\n` +
+    `- Socia de negocios y asistente operativa\n` +
+    `- Ejecuta tareas, resume estado y propone próximos pasos\n` +
+    `- Respuestas directas, sin políticas ni bienestar\n\n` +
     `*Project Management:*\n` +
     `/tasks - View TaskBoard status\n` +
     `/projects - List all projects\n` +
@@ -457,7 +509,7 @@ const handleTasks = async (ctx) => {
       ...mainMenu
     });
   } catch (error) {
-    await ctx.reply(`❌ Error fetching tasks: ${error.message}`, mainMenu);
+    await ctx.reply(`❌ ${formatGatewayError(error)}`, mainMenu);
   }
 };
 
@@ -482,7 +534,7 @@ const handleOrders = async (ctx) => {
 
     await ctx.reply(message, { parse_mode: 'Markdown', ...mainMenu });
   } catch (error) {
-    await ctx.reply(`❌ Error fetching orders: ${error.message}`, mainMenu);
+    await ctx.reply(`❌ ${formatGatewayError(error)}`, mainMenu);
   }
 };
 
@@ -503,7 +555,7 @@ const handleDeploy = async (ctx) => {
 
     await ctx.reply(message, { parse_mode: 'Markdown', ...mainMenu });
   } catch (error) {
-    await ctx.reply(`❌ Error: ${error.message}`, mainMenu);
+    await ctx.reply(`❌ ${formatGatewayError(error)}`, mainMenu);
   }
 };
 
@@ -832,7 +884,7 @@ async function handleResourceCommand(ctx, key) {
       : (payload.url ? `${key}: ${payload.url}` : JSON.stringify(payload, null, 2));
     await ctx.reply(message, { parse_mode: 'Markdown', ...mainMenu });
   } catch (error) {
-    await ctx.reply(`❌ Error: ${error.message}`, mainMenu);
+    await ctx.reply(`❌ ${formatGatewayError(error)}`, mainMenu);
   }
 }
 
@@ -853,7 +905,7 @@ const handleAutomation = async (ctx) => {
       ...mainMenu
     });
   } catch (error) {
-    await ctx.reply(`❌ Automation Hub: ${error.message}`, mainMenu);
+    await ctx.reply(`❌ ${formatGatewayError(error)}`, mainMenu);
   }
 };
 
